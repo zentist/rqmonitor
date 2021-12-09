@@ -257,6 +257,8 @@ def reformat_job_data(job: Job):
             "job_fail_ttl": validate_job_data(
                 serialized_job.get("failure_ttl"), default="1yr", append_s=True
             ),
+            "job_name": job.func_name,
+            "job_args": job.args,
         },
     }
 
