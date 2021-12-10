@@ -313,64 +313,73 @@ def list_jobs_in_queue_all_registries(queue):
     return jobs
 
 
-def list_jobs_in_queue_registry(queue, registry, start=0, end=-1):
+def _apply_jobs_search(jobs, search_query):
+    return [job for job in jobs if _apply_job_search(job, search_query)]
+
+
+def _apply_job_search(job, search_query):
+    if not search_query:
+        return True
+
+    return search_query in str(job.args) or search_query in job.func_name
+
+
+def _fetch_many_jobs(job_ids, conn, search):
+    return [
+        job
+        for job in Job.fetch_many(job_ids=job_ids, connection=conn)
+        if job is not None and _apply_job_search(job, search)
+    ]
+
+
+def list_jobs_in_queue_registry(queue, registry, search_query=None, start=0, end=-1):
     """
     :param end: end index for picking jobs
     :param start: start index for picking jobs
     :param queue: Queue name from which jobs need to be listed
     :param registry: registry class from which jobs to be returned
+    :param search_query: search string used to search by jobs arguments and jobs names
     :return: list of all jobs matching above criteria at present scenario
 
     By default returns all jobs in given queue and registry combination
     """
     queue = get_queue(queue)
     redis_connection = resolve_connection()
+
+    result = []
+
     if registry == StartedJobRegistry or registry == "started":
         job_ids = queue.started_job_registry.get_job_ids(start, end)
-        return [
-            x
-            for x in Job.fetch_many(job_ids=job_ids, connection=redis_connection)
-            if x is not None
-        ]
+
+        result = _fetch_many_jobs(job_ids, redis_connection, search_query)
     elif registry == FinishedJobRegistry or registry == "finished":
         job_ids = queue.finished_job_registry.get_job_ids(start, end)
-        return [
-            x
-            for x in Job.fetch_many(job_ids=job_ids, connection=redis_connection)
-            if x is not None
-        ]
+
+        result = _fetch_many_jobs(job_ids, redis_connection, search_query)
     elif registry == FailedJobRegistry or registry == "failed":
         job_ids = queue.failed_job_registry.get_job_ids(start, end)
-        return [
-            x
-            for x in Job.fetch_many(job_ids=job_ids, connection=redis_connection)
-            if x is not None
-        ]
+
+        result = _fetch_many_jobs(job_ids, redis_connection, search_query)
     elif registry == DeferredJobRegistry or registry == "deferred":
         job_ids = queue.deferred_job_registry.get_job_ids(start, end)
-        return [
-            x
-            for x in Job.fetch_many(job_ids=job_ids, connection=redis_connection)
-            if x is not None
-        ]
+
+        result = _fetch_many_jobs(job_ids, redis_connection, search_query)
     elif registry == ScheduledJobRegistry or registry == "scheduled":
         job_ids = queue.scheduled_job_registry.get_job_ids(start, end)
-        return [
-            x
-            for x in Job.fetch_many(job_ids=job_ids, connection=redis_connection)
-            if x is not None
-        ]
+
+        result = _fetch_many_jobs(job_ids, redis_connection, search_query)
     # although not implemented as registry this is for ease
     elif registry == "queued":
         # get_jobs API has (offset, length) as parameter, while above function has start, end
-        # so below is hack to fit this on above deifinition
+        # so below is hack to fit this on above definition
         if end == -1:
             # -1 means all are required so pass as it is
-            return queue.get_jobs(start, end)
+            result = _apply_jobs_search(queue.get_jobs(start, end), search_query)
         else:
             # end-start+1 gives required length
-            return queue.get_jobs(start, end - start + 1)
-    return []
+            result = _apply_jobs_search(queue.get_jobs(start, end - start + 1), search_query)
+
+    return result
 
 
 def empty_registry(registry_name, queue_name, connection=None):
@@ -578,11 +587,12 @@ def find_start_block(job_counts, start):
     return -1, -1
 
 
-def resolve_jobs(job_counts, start, length):
+def resolve_jobs(job_counts, start, length, search_query=None):
     """
     :param job_counts: list of blocks(queue, registry, job_count)
     :param start: job start index for datatables
     :param length: number of jobs to be returned for datatables
+    :param search_query: search string used to search by jobs arguments and jobs names
     :return: list of jobs of len <= "length"
 
     It may happen during processing some jobs move around registries
@@ -599,7 +609,7 @@ def resolve_jobs(job_counts, start, length):
         # as some might have been moved out from that registry, in such case we try to
         # fill our length by capturing the ones from other selected registries
         current_block_jobs = list_jobs_in_queue_registry(
-            block.queue, block.registry, start=cursor
+            block.queue, block.registry, search_query=search_query, start=cursor
         )
         jobs.extend(current_block_jobs)
         cursor = 0

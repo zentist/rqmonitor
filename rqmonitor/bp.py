@@ -214,7 +214,7 @@ def list_jobs_api():
     start = int(request.args.get("start"))
     length = int(request.args.get("length"))
     draw = int(request.args.get("draw"))
-    search = request.args.get("search[value]")
+    search_query = request.args.get("search[value]")
     requested_queues = request.args.getlist("queues[]")
     requested_job_status = request.args.getlist("jobstatus[]")
 
@@ -237,7 +237,7 @@ def list_jobs_api():
             job_blocks.append(blocks(queue, job_status, queue_registry_count))
             total_job_count += queue_registry_count
 
-    jobs = resolve_jobs(job_blocks, start, length)
+    jobs = resolve_jobs(job_blocks, start, length, search_query)
 
     for job in jobs:
         serialised_jobs.append(reformat_job_data(job))
@@ -245,7 +245,7 @@ def list_jobs_api():
     return {
         "draw": draw,
         "recordsTotal": total_job_count,
-        "recordsFiltered": total_job_count,
+        "recordsFiltered": len(jobs),
         "data": serialised_jobs,
     }
 
