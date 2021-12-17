@@ -494,23 +494,7 @@ def get_redis_memory_used(connection=None):
     """
     redis_connection = resolve_connection(connection)
     script = """
-        local sum = 0;
-        local keys = {};
-        local done = false;
-        local cursor = "0"
-        repeat
-            local result = redis.call("SCAN", cursor, "match", ARGV[1])
-            cursor = result[1];
-            keys = result[2];
-            for i, key in ipairs(keys) do
-                local mem = redis.call("MEMORY", "USAGE", key);
-                sum = sum + mem;
-            end
-            if cursor == "0" then
-                done = true;
-            end
-        until done
-        return sum;
+        return 0;
     """
     script = redis_connection.register_script(script)
     return humanize.naturalsize(script(args=[RQ_REDIS_NAMESPACE]))
